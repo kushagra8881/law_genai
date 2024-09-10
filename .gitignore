@@ -1,5 +1,4 @@
 # Ignore SQLite3 database files
-*.sqlite3
 
 # Ignore environment files
 .env
