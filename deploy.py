@@ -7,6 +7,7 @@ from langchain.llms import OpenAI
 from langchain.schema.output_parser import StrOutputParser
 from langchain.load import dumps, loads
 import openai
+import gdown
 
 # Initialize the ChromaDB client
 client = chromadb.PersistentClient(path="indian_law_bge_work_1")
