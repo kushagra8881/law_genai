@@ -1,4 +1,4 @@
-import gradio as gr
+import streamlit as st
 import chromadb
 import os
 from langchain.prompts import PromptTemplate
@@ -14,13 +14,15 @@ client = chromadb.PersistentClient(path="indian_law_bge_work_1")
 # Load the collection
 collection = client.get_or_create_collection("indian_law_bge_work_1")
 
+
 # Vector Search Function
 def vector_search(query, top_k=5):
     try:
         results = collection.query(query_texts=[query], n_results=top_k)
         return results['documents']
     except Exception as e:
-        return f"Error during vector search: {e}"
+        st.error(f"Error during vector search: {e}")
+        return []
 
 # Generate Query Function
 def generate_query(query, query_length):
@@ -41,7 +43,8 @@ def generate_query(query, query_length):
         result = [i for i in result if i != ""]
         return result
     except Exception as e:
-        return f"Error during query generation: {e}"
+        st.error(f"Error during query generation: {e}")
+        return []
 
 # Reciprocal Rank Fusion Function
 def reciprocal_rank_fusion(results_list, k=60):
@@ -62,35 +65,37 @@ def reciprocal_rank_fusion(results_list, k=60):
         
         return reranked_results
     except Exception as e:
-        return f"Error during RRF: {e}"
+        st.error(f"Error during RRF: {e}")
+        return []
 
-# Main Function to Handle the Workflow
-def handle_query(openai_key, query, query_length):
-    openai.api_key = openai_key
-    os.environ["OPENAI_API_KEY"] = openai_key
-    
-    # Generate reformulated queries
+# Streamlit UI
+st.title("Indian Law Assistant")
+st.info("This is a law assistant that can answer questions about Indian law. It uses a vector search to find the most relevant documents and a language model to answer the questions.")
+st.divider()
+st.image("image.png")
+open_ai_key=st.text_input("Enter your OpenAI API key:")
+openai.api_key = open_ai_key
+os.ge
+query = st.text_input("Enter your query about Indian law:")
+query_length = st.number_input("Number of reformulated queries:", min_value=1, max_value=10, value=3)
+
+if st.button("Submit"):
     generated_queries = generate_query(query, query_length)
-    
-    if isinstance(generated_queries, str):
-        return generated_queries, []
-    
+
     all_results = []
     for g_query in generated_queries:
         documents = vector_search(g_query, top_k=5)
-        if isinstance(documents, str):  # Error handling
-            return documents, []
         all_results.append(documents)
     
-    # Fuse results using RRF
     fused_results = reciprocal_rank_fusion(all_results)
+
+    # Display results
     
-    if isinstance(fused_results, str):
-        return fused_results, []
     
-    # Prepare fused results for language model input
+    # Convert results to string format
     fused_results_str = "\n".join([f"Document: {result}, Score: {score}" for result, score in fused_results])
 
+    # Define the prompt template
     prompt = PromptTemplate(
         input_variables=["query", "fused_results"],
         template="""
@@ -102,6 +107,7 @@ def handle_query(openai_key, query, query_length):
         """
     )
 
+    # Format the prompt
     formatted_prompt = prompt.format(
         query=query,
         fused_results=fused_results_str
@@ -109,7 +115,7 @@ def handle_query(openai_key, query, query_length):
 
     # Get the OpenAI response
     response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model="gpt-4",  # Use the appropriate model
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": formatted_prompt}
@@ -118,34 +124,11 @@ def handle_query(openai_key, query, query_length):
         temperature=0.7
     )
 
-    answer = response.choices[0].message['content']
-    
-    return answer, fused_results
+    # Print the response
+    st.write(response.choices[0].message['content'])
 
-# Gradio Interface
-def app(openai_key, query, query_length):
-    answer, fused_results = handle_query(openai_key, query, query_length)
-    
-    fused_results_str = "\n".join([f"Document: {result}, Score: {score}" for result, score in fused_results])
-    
-    return answer, fused_results_str
+    st.divider()
+    st.title("Fused Results")
 
-with gr.Blocks() as demo:
-    gr.Markdown("## Indian Law Assistant")
-    
-    openai_key = gr.Textbox(label="OpenAI API Key", placeholder="Enter your OpenAI API key")
-    query = gr.Textbox(label="Query", placeholder="Enter your query about Indian law")
-    query_length = gr.Slider(minimum=1, maximum=10, value=3, label="Number of Reformulated Queries")
-
-    answer_output = gr.Textbox(label="Answer", interactive=False)
-    fused_results_output = gr.Textbox(label="Fused Results", interactive=False)
-
-    submit_button = gr.Button("Submit")
-    
-    submit_button.click(
-        fn=app,
-        inputs=[openai_key, query, query_length],
-        outputs=[answer_output, fused_results_output]
-    )
-
-demo.launch()
+    for i in fused_results:
+        st.write(i)
